@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/snakoner/go-bitcoin-lib/bitcoin"
+	bitcoin "github.com/snakoner/go-bitcoin-lib"
 )
 
 // cUA3YStCdRkJWKAAXozQ4PTwPB3bY79rJErRE6TE1XEv6FzcJz2j tb1qadvgy7080gdueaxv4p9tysufdxxk8ga40kll2q
