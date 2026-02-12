@@ -495,3 +495,24 @@ func (c *MempoolClient) GetTransaction(
 
 	return &tx, nil
 }
+
+func (c *MempoolClient) GetUTXOSatBalance(
+	ctx context.Context,
+	address string,
+	withConfirmed bool,
+) (int64, error) {
+	utxos, err := c.FetchUTXOs(ctx, address)
+	if err != nil {
+		return 0, err
+	}
+
+	var total int64
+	for _, u := range utxos {
+		if withConfirmed && !u.Confirmed {
+			continue
+		}
+		total += u.AmountSat
+	}
+
+	return total, nil
+}
