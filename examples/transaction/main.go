@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	bitcoin "github.com/snakoner/go-bitcoin-lib"
 )
@@ -21,8 +23,8 @@ import (
 // cPAKqZDEaV28p9vM8QtH9vT8AmgVJpjmVTezBxiafdJwJ95ASbpP tb1qujdeecnjegxmahkm4tzfdky2ldhy0cgem5jqkz
 
 func main() {
-	wif := "cUA3YStCdRkJWKAAXozQ4PTwPB3bY79rJErRE6TE1XEv6FzcJz2j"
-	address := "tb1qadvgy7080gdueaxv4p9tysufdxxk8ga40kll2q"
+	wif := "cPeScL2gDFa2ggmWjQJC3d7FgFmiW2mdDEjZ7XMWmuFxaVm2oV1E"
+	address := "tb1qtdmuruspj73vqd5h60g050axrt99ttfqshtq7c"
 
 	mempoolClient, err := bitcoin.NewMempoolClient(bitcoin.BitcoinTestnet)
 	if err != nil {
@@ -38,6 +40,7 @@ func main() {
 			u.TxID, u.Vout, u.AmountSat, u.Confirmed, len(u.PkScript))
 	}
 
+	return
 	outputs := []bitcoin.TxOutput{
 		{
 			Address:   "tb1qnacfl6xeczut97mct3yjfu5mc29fnh6rvrg5wx",
@@ -49,7 +52,7 @@ func main() {
 		},
 	}
 
-	rawTx, err := bitcoin.BuildAndSignTx(bitcoin.BitcoinTestnet, wif, "tb1q5qal05y83hw070m4eaxscfpyxjdmptmhj648aj", utxos, outputs, 1000)
+	rawTx, err := bitcoin.BuildAndSignTx(bitcoin.BitcoinTestnet, wif, "tb1qxv7y8kl35u2hfyvnzt9w03l4ypse273lezxymf", utxos, outputs, 1000)
 	if err != nil {
 		panic(err)
 	}
@@ -62,4 +65,20 @@ func main() {
 	}
 
 	fmt.Println(txid)
+
+	for {
+		tx, err := mempoolClient.GetTransaction(context.Background(), txid)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println(tx)
+		time.Sleep(10 * time.Second)
+
+		b, err := json.MarshalIndent(tx, "", "  ")
+		if err != nil {
+			continue
+		}
+		fmt.Println(string(b))
+	}
 }

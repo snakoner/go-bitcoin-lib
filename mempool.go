@@ -336,9 +336,9 @@ func (c *MempoolClient) SendTransaction(
 	ctx context.Context,
 	privWIF string,
 	fromAddr string,
+	changeAddr string,
 	outputs []TxOutput,
 ) (string, error) {
-
 	if len(outputs) == 0 {
 		return "", errors.New("outputs is empty")
 	}
@@ -366,7 +366,7 @@ func (c *MempoolClient) SendTransaction(
 	rawTx, err := BuildAndSignTx(
 		c.Network,
 		privWIF,
-		fromAddr,
+		changeAddr,
 		selected,
 		outputs,
 		feeSat,
@@ -389,7 +389,6 @@ type FeeRecommendation struct {
 func (c *MempoolClient) GetFeeRateSatPerVByte(
 	ctx context.Context,
 ) (int64, error) {
-
 	var rec FeeRecommendation
 	if err := c.get(ctx, "/v1/fees/recommended", &rec); err != nil {
 		return 0, err
