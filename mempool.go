@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/btcutil"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
@@ -47,17 +46,6 @@ func NewMempoolClient(network string) (*MempoolClient, error) {
 		BaseURL: baseURL,
 		HTTP:    &http.Client{Timeout: 15 * time.Second},
 	}, nil
-}
-
-func (c *MempoolClient) chainParams() (*chaincfg.Params, error) {
-	switch c.Network {
-	case BitcoinTestnet:
-		return &chaincfg.TestNet3Params, nil
-	case BitcoinMainnet:
-		return &chaincfg.MainNetParams, nil
-	default:
-		return nil, fmt.Errorf("unsupported network: %s", c.Network)
-	}
 }
 
 func (c *MempoolClient) get(ctx context.Context, path string, out any) error {
@@ -198,14 +186,9 @@ func BuildAndSignTx(
 	outputs []TxOutput,
 	feeSat int64,
 ) (string, error) {
-	var params *chaincfg.Params
-	switch network {
-	case BitcoinTestnet:
-		params = &chaincfg.TestNet3Params
-	case BitcoinMainnet:
-		params = &chaincfg.MainNetParams
-	default:
-		return "", fmt.Errorf("unsupported network: %s", network)
+	params, err := getNetworkParams(network)
+	if err != nil {
+		return "", err
 	}
 
 	wif, err := btcutil.DecodeWIF(privWIF)
@@ -515,4 +498,55 @@ func (c *MempoolClient) GetUTXOSatBalance(
 	}
 
 	return total, nil
+}
+
+func (c *MempoolClient) SweepTransaction(
+	ctx context.Context,
+	privWIF string,
+	fromAddr string,
+	toAddr string,
+) (string, error) {
+	if fromAddr == "" {
+		return "", errors.New("fromAddr is empty")
+	}
+	if toAddr == "" {
+		return "", errors.New("toAddr is empty")
+	}
+
+	utxos, err := c.FetchUTXOs(ctx, fromAddr)
+	if err != nil {
+		return "", err
+	}
+	if len(utxos) == 0 {
+		return "", errors.New("no utxos found for address")
+	}
+
+	var totalSat int64
+	for _, u := range utxos {
+		totalSat += u.AmountSat
+	}
+
+	feeSat, err := c.EstimateFeeSat(ctx, len(utxos), 1)
+	if err != nil {
+		return "", err
+	}
+
+	sendSat := totalSat - feeSat
+	if sendSat <= 0 {
+		return "", fmt.Errorf("balance %d sat is not enough to cover fee %d sat", totalSat, feeSat)
+	}
+
+	rawTx, err := BuildAndSignTx(
+		c.Network,
+		privWIF,
+		toAddr,
+		utxos,
+		[]TxOutput{{Address: toAddr, AmountSat: sendSat}},
+		feeSat,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return c.BroadcastTx(ctx, rawTx)
 }

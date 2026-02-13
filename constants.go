@@ -16,7 +16,7 @@ func getNetworkParams(network string) (*chaincfg.Params, error) {
 	case BitcoinMainnet:
 		return &chaincfg.MainNetParams, nil
 	case BitcoinTestnet:
-		return &chaincfg.TestNet3Params, nil
+		return &chaincfg.TestNet4Params, nil
 	}
 	return nil, fmt.Errorf("invalid network: %s", network)
 }
