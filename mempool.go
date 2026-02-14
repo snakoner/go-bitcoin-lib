@@ -28,7 +28,7 @@ type MempoolClient struct {
 func getMempoolURL(network string) (string, error) {
 	switch network {
 	case BitcoinTestnet:
-		return "https://mempool.space/testnet/api", nil
+		return "https://mempool.space/testnet4/api", nil
 	case BitcoinMainnet:
 		return "https://mempool.space/api", nil
 	default:
