@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +19,8 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 )
+
+const DustLimitSat = int64(546)
 
 type MempoolClient struct {
 	Network string
@@ -173,6 +176,79 @@ func SelectUTXOs(utxos []UTXO, target int64) ([]UTXO, int64, error) {
 	return nil, 0, fmt.Errorf("insufficient funds: need %d sat", target)
 }
 
+type CoinSelection struct {
+	Selected  []UTXO
+	FeeSat    int64
+	ChangeSat int64
+}
+
+func (c *MempoolClient) SelectUTXOsForTx(
+	ctx context.Context,
+	utxos []UTXO,
+	outputs []TxOutput,
+	changeAddr string,
+) (*CoinSelection, error) {
+	if len(outputs) == 0 {
+		return nil, errors.New("outputs is empty")
+	}
+	if changeAddr == "" {
+		return nil, errors.New("change address is empty")
+	}
+	if len(utxos) == 0 {
+		return nil, errors.New("no utxos provided")
+	}
+
+	var totalOut int64
+	for _, o := range outputs {
+		totalOut += o.AmountSat
+	}
+
+	feeRate, err := c.GetFeeRateSatPerVByte(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get fee rate: %w", err)
+	}
+
+	sorted := make([]UTXO, len(utxos))
+	copy(sorted, utxos)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].AmountSat > sorted[j].AmountSat
+	})
+
+	numOutputs := len(outputs)
+
+	var selected []UTXO
+	var inputSum int64
+
+	for _, u := range sorted {
+		selected = append(selected, u)
+		inputSum += u.AmountSat
+
+		numInputs := len(selected)
+
+		feeNoChange := feeRate * EstimateTxSizeVBytes(numInputs, numOutputs)
+		feeWithChange := feeRate * EstimateTxSizeVBytes(numInputs, numOutputs+1)
+
+		change := inputSum - totalOut - feeWithChange
+		if change >= DustLimitSat {
+			return &CoinSelection{
+				Selected:  selected,
+				FeeSat:    feeWithChange,
+				ChangeSat: change,
+			}, nil
+		}
+
+		if inputSum >= totalOut+feeNoChange {
+			return &CoinSelection{
+				Selected:  selected,
+				FeeSat:    inputSum - totalOut,
+				ChangeSat: 0,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("insufficient funds: need at least %d sat, have %d sat", totalOut, inputSum)
+}
+
 type TxOutput struct {
 	Address   string
 	AmountSat int64
@@ -250,8 +326,7 @@ func BuildAndSignTx(
 		return "", fmt.Errorf("insufficient funds: in=%d out=%d fee=%d", inputSum, outputSum, feeSat)
 	}
 
-	const dustChangeSat = int64(500)
-	if change >= dustChangeSat {
+	if change >= DustLimitSat {
 		addr, err := btcutil.DecodeAddress(changeAddr, params)
 		if err != nil {
 			return "", fmt.Errorf("decode change address %s: %w", changeAddr, err)
@@ -331,17 +406,7 @@ func (c *MempoolClient) SendTransaction(
 		return "", err
 	}
 
-	var totalOut int64
-	for _, o := range outputs {
-		totalOut += o.AmountSat
-	}
-
-	feeSat, err := c.EstimateFeeSat(ctx, len(utxos), len(outputs))
-	if err != nil {
-		return "", err
-	}
-
-	selected, _, err := SelectUTXOs(utxos, totalOut+feeSat)
+	cs, err := c.SelectUTXOsForTx(ctx, utxos, outputs, changeAddr)
 	if err != nil {
 		return "", err
 	}
@@ -350,9 +415,9 @@ func (c *MempoolClient) SendTransaction(
 		c.Network,
 		privWIF,
 		changeAddr,
-		selected,
+		cs.Selected,
 		outputs,
-		feeSat,
+		cs.FeeSat,
 	)
 	if err != nil {
 		return "", err
