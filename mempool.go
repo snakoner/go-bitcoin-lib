@@ -53,6 +53,10 @@ func NewMempoolClient(network string) (*MempoolClient, error) {
 	}, nil
 }
 
+var (
+	TransactionNotFound = fmt.Errorf("tx not found")
+)
+
 func (c *MempoolClient) get(ctx context.Context, path string, out any) error {
 	if c.BaseURL == "" {
 		return errors.New("mempool base url is empty")
@@ -80,6 +84,9 @@ func (c *MempoolClient) get(ctx context.Context, path string, out any) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusNotFound {
+			return TransactionNotFound
+		}
 		return fmt.Errorf("http %d: %s", resp.StatusCode, string(b))
 	}
 
