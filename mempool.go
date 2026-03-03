@@ -21,6 +21,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 )
 
+// Dust limit is the minimum amount of satoshis that can be spent on a transaction.
 const DustLimitSat = int64(546)
 
 type MempoolClient struct {
