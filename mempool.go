@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -475,7 +476,6 @@ func (c *MempoolClient) EstimateFeeSat(
 	numInputs int,
 	numOutputs int,
 ) (int64, error) {
-
 	feeRate, err := c.GetFeeRateSatPerVByte(ctx)
 	if err != nil {
 		return 0, err
@@ -542,6 +542,149 @@ func (c *MempoolClient) GetTransaction(
 	}
 
 	return &tx, nil
+}
+
+func estimateInputVBytes(pkScript []byte) (float64, error) {
+	if txscript.IsPayToWitnessPubKeyHash(pkScript) {
+		return 68.0, nil
+	}
+	if txscript.IsPayToTaproot(pkScript) {
+		return 57.5, nil
+	}
+	if txscript.IsPayToPubKeyHash(pkScript) {
+		return 148.0, nil
+	}
+	if txscript.IsPayToScriptHash(pkScript) {
+		return 91.0, nil
+	}
+
+	return 0, fmt.Errorf("unsupported input script type: %x", pkScript)
+}
+
+func estimateOutputVBytes(addr btcutil.Address) (float64, error) {
+	switch addr.(type) {
+	case *btcutil.AddressWitnessPubKeyHash:
+		return 31.0, nil // P2WPKH output
+	case *btcutil.AddressTaproot:
+		return 43.0, nil // P2TR output
+	case *btcutil.AddressPubKeyHash:
+		return 34.0, nil // P2PKH output
+	case *btcutil.AddressScriptHash:
+		return 32.0, nil // P2SH output
+	default:
+		return 0, fmt.Errorf("unsupported output address type: %T", addr)
+	}
+}
+
+func EstimateTxVBytes(
+	network string,
+	inputs []UTXO,
+	outputs []TxOutput,
+	includeChange bool,
+	changeAddr string,
+) (int64, error) {
+	if len(inputs) == 0 {
+		return 0, errors.New("no inputs")
+	}
+	if len(outputs) == 0 {
+		return 0, errors.New("no outputs")
+	}
+
+	params, err := getNetworkParams(network)
+	if err != nil {
+		return 0, err
+	}
+
+	hasSegwit := false
+	for _, in := range inputs {
+		if txscript.IsWitnessProgram(in.PkScript) {
+			hasSegwit = true
+			break
+		}
+	}
+
+	overhead := 10.0
+	if hasSegwit {
+		overhead = 10.5
+	}
+
+	vb := overhead
+
+	for _, in := range inputs {
+		inVB, err := estimateInputVBytes(in.PkScript)
+		if err != nil {
+			return 0, err
+		}
+		vb += inVB
+	}
+
+	for _, out := range outputs {
+		addr, err := btcutil.DecodeAddress(out.Address, params)
+		if err != nil {
+			return 0, fmt.Errorf("decode output address %s: %w", out.Address, err)
+		}
+		outVB, err := estimateOutputVBytes(addr)
+		if err != nil {
+			return 0, err
+		}
+		vb += outVB
+	}
+
+	if includeChange {
+		if changeAddr == "" {
+			return 0, errors.New("change address required when includeChange=true")
+		}
+		addr, err := btcutil.DecodeAddress(changeAddr, params)
+		if err != nil {
+			return 0, fmt.Errorf("decode change address %s: %w", changeAddr, err)
+		}
+		outVB, err := estimateOutputVBytes(addr)
+		if err != nil {
+			return 0, err
+		}
+		vb += outVB
+	}
+
+	return int64(math.Ceil(vb)), nil
+}
+
+func (c *MempoolClient) EstimateFeeSatForTx(
+	ctx context.Context,
+	network string,
+	inputs []UTXO,
+	outputs []TxOutput,
+	changeAddr string,
+) (feeSat int64, withChange bool, vbytes int64, err error) {
+	feeRate, err := c.GetFeeRateSatPerVByte(ctx)
+	if err != nil {
+		return 0, false, 0, err
+	}
+
+	vbChange, err := EstimateTxVBytes(network, inputs, outputs, true, changeAddr)
+	if err != nil {
+		return 0, false, 0, err
+	}
+	feeWithChange := feeRate * vbChange
+
+	var inSum, outSum int64
+	for _, in := range inputs {
+		inSum += in.AmountSat
+	}
+	for _, o := range outputs {
+		outSum += o.AmountSat
+	}
+
+	change := inSum - outSum - feeWithChange
+	if change >= DustLimitSat {
+		return feeWithChange, true, vbChange, nil
+	}
+
+	vbNo, err := EstimateTxVBytes(network, inputs, outputs, false, "")
+	if err != nil {
+		return 0, false, 0, err
+	}
+	feeNo := feeRate * vbNo
+	return feeNo, false, vbNo, nil
 }
 
 func (c *MempoolClient) GetUTXOSatBalance(
