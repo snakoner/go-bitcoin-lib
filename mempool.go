@@ -188,6 +188,7 @@ func (c *MempoolClient) SelectUTXOsForTx(
 	utxos []UTXO,
 	outputs []TxOutput,
 	changeAddr string,
+	mode string,
 ) (*CoinSelection, error) {
 	if len(outputs) == 0 {
 		return nil, errors.New("outputs is empty")
@@ -204,7 +205,7 @@ func (c *MempoolClient) SelectUTXOsForTx(
 		totalOut += o.AmountSat
 	}
 
-	feeRate, err := c.GetFeeRateSatPerVByte(ctx)
+	feeRate, err := c.GetFeeRateSatPerVByte(ctx, mode)
 	if err != nil {
 		return nil, fmt.Errorf("get fee rate: %w", err)
 	}
@@ -397,6 +398,7 @@ func (c *MempoolClient) SendTransaction(
 	fromAddr string,
 	changeAddr string,
 	outputs []TxOutput,
+	mode string,
 ) (string, error) {
 	if len(outputs) == 0 {
 		return "", errors.New("outputs is empty")
@@ -407,7 +409,7 @@ func (c *MempoolClient) SendTransaction(
 		return "", err
 	}
 
-	cs, err := c.SelectUTXOsForTx(ctx, utxos, outputs, changeAddr)
+	cs, err := c.SelectUTXOsForTx(ctx, utxos, outputs, changeAddr, mode)
 	if err != nil {
 		return "", err
 	}
@@ -435,23 +437,41 @@ type FeeRecommendation struct {
 	MinimumFee  int64 `json:"minimumFee"`
 }
 
+const (
+	FeeFastest  = "fastestFee"
+	FeeHalfHour = "halfHourFee"
+	FeeHour     = "hourFee"
+	FeeEconomy  = "economyFee"
+	FeeMinimum  = "minimumFee"
+)
+
 func (c *MempoolClient) GetFeeRateSatPerVByte(
 	ctx context.Context,
+	mode string,
 ) (int64, error) {
+	if mode == "" {
+		mode = FeeFastest
+	}
+
 	var rec FeeRecommendation
 	if err := c.get(ctx, "/v1/fees/recommended", &rec); err != nil {
 		return 0, err
 	}
 
-	if rec.HourFee > 0 {
+	switch mode {
+	case FeeFastest:
+		return rec.FastestFee, nil
+	case FeeHalfHour:
+		return rec.HalfHourFee, nil
+	case FeeHour:
 		return rec.HourFee, nil
-	}
-
-	if rec.MinimumFee > 0 {
+	case FeeEconomy:
+		return rec.EconomyFee, nil
+	case FeeMinimum:
 		return rec.MinimumFee, nil
 	}
 
-	return 0, fmt.Errorf("invalid fee recommendation")
+	return 0, fmt.Errorf("invalid fee mode: %s", mode)
 }
 
 func EstimateTxSizeVBytes(
@@ -475,8 +495,9 @@ func (c *MempoolClient) EstimateFeeSat(
 	ctx context.Context,
 	numInputs int,
 	numOutputs int,
+	mode string,
 ) (int64, error) {
-	feeRate, err := c.GetFeeRateSatPerVByte(ctx)
+	feeRate, err := c.GetFeeRateSatPerVByte(ctx, mode)
 	if err != nil {
 		return 0, err
 	}
@@ -654,8 +675,9 @@ func (c *MempoolClient) EstimateFeeSatForTx(
 	inputs []UTXO,
 	outputs []TxOutput,
 	changeAddr string,
+	mode string,
 ) (feeSat int64, withChange bool, vbytes int64, err error) {
-	feeRate, err := c.GetFeeRateSatPerVByte(ctx)
+	feeRate, err := c.GetFeeRateSatPerVByte(ctx, mode)
 	if err != nil {
 		return 0, false, 0, err
 	}
@@ -713,6 +735,7 @@ func (c *MempoolClient) SweepTransaction(
 	privWIF string,
 	fromAddr string,
 	toAddr string,
+	mode string,
 ) (string, error) {
 	if fromAddr == "" {
 		return "", errors.New("fromAddr is empty")
@@ -734,7 +757,7 @@ func (c *MempoolClient) SweepTransaction(
 		totalSat += u.AmountSat
 	}
 
-	feeSat, err := c.EstimateFeeSat(ctx, len(utxos), 1)
+	feeSat, err := c.EstimateFeeSat(ctx, len(utxos), 1, mode)
 	if err != nil {
 		return "", err
 	}
