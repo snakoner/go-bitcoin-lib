@@ -23,24 +23,31 @@ import (
 // cPAKqZDEaV28p9vM8QtH9vT8AmgVJpjmVTezBxiafdJwJ95ASbpP tb1qujdeecnjegxmahkm4tzfdky2ldhy0cgem5jqkz
 
 func main() {
-	wif := "cPeScL2gDFa2ggmWjQJC3d7FgFmiW2mdDEjZ7XMWmuFxaVm2oV1E"
-	address := "tb1qtdmuruspj73vqd5h60g050axrt99ttfqshtq7c"
+	wif := "cTMuYFBxPDh9j9aBWLffLkm2sGA8pumv7f3pEspNwFKJR776BYnT"
+	address := "tb1qv4n845euy70tnt89jvd2ffxee72pjaxunlz0qx"
 
-	mempoolClient, err := bitcoin.NewMempoolClient(bitcoin.BitcoinTestnet)
+	indexator, err := bitcoin.NewIndexator(bitcoin.IndexatorBlockstream, bitcoin.BitcoinTestnet)
 	if err != nil {
 		panic(err)
 	}
-	utxos, err := mempoolClient.FetchUTXOs(context.Background(), address)
+	utxos, err := indexator.FetchUTXOs(context.Background(), address)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("utxos", len(utxos))
 
 	for _, u := range utxos {
 		fmt.Printf("- %s:%d amount=%d sat confirmed=%v pkScriptLen=%d\n",
 			u.TxID, u.Vout, u.AmountSat, u.Confirmed, len(u.PkScript))
 	}
 
-	return
+	balance, err := indexator.GetUTXOSatBalance(context.Background(), address, true)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("balance", balance)
+
 	outputs := []bitcoin.TxOutput{
 		{
 			Address:   "tb1qnacfl6xeczut97mct3yjfu5mc29fnh6rvrg5wx",
@@ -52,22 +59,17 @@ func main() {
 		},
 	}
 
-	rawTx, err := bitcoin.BuildAndSignTx(bitcoin.BitcoinTestnet, wif, "tb1qxv7y8kl35u2hfyvnzt9w03l4ypse273lezxymf", utxos, outputs, 1000)
+	changeAddr := "tb1qv4n845euy70tnt89jvd2ffxee72pjaxunlz0qx"
+
+	txid, err := indexator.SendTransaction(context.Background(), wif, address, changeAddr, outputs, "fastestFee")
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(rawTx)
-
-	txid, err := mempoolClient.BroadcastTx(context.Background(), rawTx)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(txid)
+	fmt.Println("txid", txid)
 
 	for {
-		tx, err := mempoolClient.GetTransaction(context.Background(), txid)
+		tx, err := indexator.GetTransaction(context.Background(), txid)
 		if err != nil {
 			panic(err)
 		}
