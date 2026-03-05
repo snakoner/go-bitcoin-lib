@@ -18,6 +18,7 @@ import (
 type BlockstreamClient struct {
 	Network string
 	BaseURL string
+	APIKey  string
 	HTTP    *http.Client
 }
 
@@ -32,7 +33,7 @@ func getBlockstreamURL(network string) (string, error) {
 	}
 }
 
-func NewBlockstreamClient(network string) (*BlockstreamClient, error) {
+func NewBlockstreamClient(network string, apiKey string) (*BlockstreamClient, error) {
 	baseURL, err := getBlockstreamURL(network)
 	if err != nil {
 		return nil, err
@@ -42,6 +43,7 @@ func NewBlockstreamClient(network string) (*BlockstreamClient, error) {
 		Network: network,
 		BaseURL: baseURL,
 		HTTP:    &http.Client{Timeout: 15 * time.Second},
+		APIKey:  apiKey,
 	}, nil
 }
 
@@ -60,6 +62,9 @@ func (c *BlockstreamClient) get(ctx context.Context, path string, out any) error
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

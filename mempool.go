@@ -20,6 +20,7 @@ type MempoolClient struct {
 	Network string
 	BaseURL string
 	HTTP    *http.Client
+	APIKey  string
 }
 
 func getMempoolURL(network string) (string, error) {
@@ -33,7 +34,7 @@ func getMempoolURL(network string) (string, error) {
 	}
 }
 
-func NewMempoolClient(network string) (*MempoolClient, error) {
+func NewMempoolClient(network string, apiKey string) (*MempoolClient, error) {
 	baseURL, err := getMempoolURL(network)
 	if err != nil {
 		return nil, err
@@ -42,6 +43,7 @@ func NewMempoolClient(network string) (*MempoolClient, error) {
 		Network: network,
 		BaseURL: baseURL,
 		HTTP:    &http.Client{Timeout: 15 * time.Second},
+		APIKey:  apiKey,
 	}, nil
 }
 

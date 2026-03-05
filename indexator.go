@@ -36,12 +36,12 @@ type Indexator interface {
 	) (string, error)
 }
 
-func NewIndexator(indexator IndexatorType, network string) (Indexator, error) {
+func NewIndexator(indexator IndexatorType, network string, apiKey string) (Indexator, error) {
 	switch indexator {
 	case IndexatorBlockstream:
-		return NewBlockstreamClient(network)
+		return NewBlockstreamClient(network, apiKey)
 	case IndexatorMempool:
-		return NewMempoolClient(network)
+		return NewMempoolClient(network, apiKey)
 	default:
 		return nil, fmt.Errorf("unsupported indexator: %s", indexator)
 	}

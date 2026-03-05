@@ -26,7 +26,7 @@ func main() {
 	wif := "cTMuYFBxPDh9j9aBWLffLkm2sGA8pumv7f3pEspNwFKJR776BYnT"
 	address := "tb1qv4n845euy70tnt89jvd2ffxee72pjaxunlz0qx"
 
-	indexator, err := bitcoin.NewIndexator(bitcoin.IndexatorBlockstream, bitcoin.BitcoinTestnet)
+	indexator, err := bitcoin.NewIndexator(bitcoin.IndexatorBlockstream, bitcoin.BitcoinTestnet, "")
 	if err != nil {
 		panic(err)
 	}
@@ -48,6 +48,7 @@ func main() {
 	}
 	fmt.Println("balance", balance)
 
+	return
 	outputs := []bitcoin.TxOutput{
 		{
 			Address:   "tb1qnacfl6xeczut97mct3yjfu5mc29fnh6rvrg5wx",
